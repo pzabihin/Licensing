@@ -1,10 +1,14 @@
-
 from flask import Flask, request, jsonify, send_file
 import pandas as pd
 import tempfile
+import os
 
 # Load unified license verification data
-df_licenses = pd.read_excel("Unified_License_Verification_Result.xlsx")
+try:
+    df_licenses = pd.read_excel("Unified_License_Verification_Result.xlsx")
+except Exception as e:
+    df_licenses = pd.DataFrame()
+    print("⚠️ WARNING: Could not load license data:", e)
 
 app = Flask(__name__)
 
@@ -43,7 +47,13 @@ def batch():
         return jsonify({"error": "No file uploaded"}), 400
 
     file = request.files['file']
-    df_input = pd.read_excel(file)
+    try:
+        df_input = pd.read_excel(file)
+    except Exception as e:
+        return jsonify({"error": f"Unable to read Excel file: {str(e)}"}), 400
+
+    if 'Provider Name' not in df_input.columns or 'Target Campaign State' not in df_input.columns:
+        return jsonify({"error": "Excel must include 'Provider Name' and 'Target Campaign State' columns."}), 400
 
     results = []
     for _, row in df_input.iterrows():
@@ -52,6 +62,9 @@ def batch():
         results.append(lookup_provider(name, state))
 
     df_results = pd.DataFrame(results)
+    if df_results.empty:
+        return jsonify({"error": "No valid provider results generated."}), 400
+
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
     df_results.to_excel(temp_file.name, index=False)
 
@@ -59,4 +72,3 @@ def batch():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
-
